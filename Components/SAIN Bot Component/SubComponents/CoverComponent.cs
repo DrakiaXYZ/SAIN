@@ -32,7 +32,7 @@ namespace SAIN.Classes
             {
                 if (GetPointToHideFrom(out var target))
                 {
-                    CoverFinder.LookForCover(target, BotOwner.Position);
+                    CoverFinder.LookForCover(target.Value, BotOwner.Position);
                 }
             }
             else
@@ -41,37 +41,18 @@ namespace SAIN.Classes
             }
         }
 
-        private bool GetPointToHideFrom(out Vector3 target)
+        private bool GetPointToHideFrom(out Vector3? target)
         {
-            target = Vector3.zero;
-
+            target = null;
             if (CurrentDecision == SAINLogicDecision.RunAwayGrenade)
             {
-                var grenade = BotOwner.BewareGrenade.GrenadeDangerPoint;
-
-                if (grenade != null)
-                {
-                    target = grenade.DangerPoint;
-                }
-                else if (SAIN.HasGoalEnemy)
-                {
-                    target = SAIN.MidPoint(SAIN.GoalEnemyPos.Value);
-                }
-                else if (SAIN.HasGoalTarget)
-                {
-                    target = SAIN.MidPoint(SAIN.GoalTargetPos.Value);
-                }
+                target = BotOwner.BewareGrenade.GrenadeDangerPoint?.DangerPoint;
             }
-            else if (SAIN.HasGoalEnemy)
+            if (target == null)
             {
-                target = SAIN.GoalEnemyPos.Value;
+                target = SAIN.CurrentTargetPosition;
             }
-            else if (SAIN.HasGoalTarget)
-            {
-                target = SAIN.GoalTargetPos.Value;
-            }
-
-            return target != Vector3.zero;
+            return target != null;
         }
 
         public bool DuckInCover()
