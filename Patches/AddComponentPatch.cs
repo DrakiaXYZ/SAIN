@@ -4,6 +4,7 @@ using HarmonyLib;
 using SAIN.Components;
 using System.Reflection;
 using SAIN.Helpers;
+using System;
 
 namespace SAIN.Patches
 {
@@ -46,8 +47,12 @@ namespace SAIN.Patches
                 return;
             }
 
-            var component = __instance.GetComponent<SAINComponent>();
-            component?.Dispose();
+            try
+            {
+                var component = __instance.GetComponent<SAINComponent>();
+                component?.Dispose();
+            }
+            catch (Exception) { }
         }
     }
 
