@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace SAIN
 {
-    [BepInPlugin("me.sol.sain", "SAIN Beta 3", "2.0")]
+    [BepInPlugin("me.sol.sain", "SAIN Beta", "3.4.4.1")]
     [BepInDependency("xyz.drakia.bigbrain", "0.1.4")]
     [BepInDependency("xyz.drakia.waypoints", "1.1.2")]
     [BepInDependency("com.spt-aki.core", "3.5.8")]
