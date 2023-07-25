@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace SAIN
 {
-    [BepInPlugin("me.sol.sain", "SAIN Beta", "3.4.4.1")]
+    [BepInPlugin("me.sol.sain", "SAIN Beta", "3.4.4.2")]
     [BepInDependency("xyz.drakia.bigbrain", "0.1.4")]
     [BepInDependency("xyz.drakia.waypoints", "1.1.2")]
     [BepInDependency("com.spt-aki.core", "3.5.8")]
@@ -27,7 +27,7 @@ namespace SAIN
             }
             
             // If BigBrain isn't loaded, we need to exit too. Normally this would be handled via
-            // the BepInDependency, but due to remapping between 3.5.7 and 3.5.8 we also have to/
+            // the BepInDependency, but due to remapping between 3.5.7 and 3.5.8 we also have to
             // manually check for now
             if (!Chainloader.PluginInfos.ContainsKey("xyz.drakia.bigbrain"))
             {
