@@ -16,6 +16,14 @@ namespace SAIN.Components
         private void Awake()
         {
             BotOwner = GetComponent<BotOwner>();
+
+            if (BotOwner == null || Player == null)
+            {
+                Logger.LogError($"Error adding SAINComponent to {BotOwner?.name}");
+                Destroy(this);
+                return;
+            }
+
             AddComponents(BotOwner);
         }
 
