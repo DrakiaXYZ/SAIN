@@ -24,6 +24,11 @@ namespace SAIN.Plugin
 
             component.Info.ForceExtract = true;
 
+            if (!SAINPlugin.BotController.BotExtractManager.TryFindExfilForBot(component))
+            {
+                Logger.LogWarning($"May not be able to force {bot.name} to extract; no exfils currently available.");
+            }
+
             return true;
         }
 

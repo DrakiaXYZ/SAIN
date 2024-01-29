@@ -227,7 +227,7 @@ namespace SAIN.Components.BotController
                     continue;
                 }
 
-                if (!bot.Mover.CanGoToPoint(collider.transform.position, out Vector3 Destination, true))
+                if (!bot.Mover.CanGoToPoint(collider.transform.position, out Vector3 Destination, true, 0.5f))
                 {
                     if (SAINPlugin.DebugMode)
                         Logger.LogWarning($"Could not find valid path to {ex.Settings.Name}");
