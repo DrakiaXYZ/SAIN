@@ -9,6 +9,8 @@ using UnityEngine.AI;
 using SAIN.SAINComponent;
 using SAIN.Helpers;
 using System.Collections;
+using System.Reflection;
+using HarmonyLib;
 
 namespace SAIN.Components.BotController
 {
@@ -18,7 +20,7 @@ namespace SAIN.Components.BotController
 
         public ExfiltrationControllerClass ExfilController { get; private set; }
         public float TotalRaidTime { get; private set; }
-
+        
         public void Update()
         {
             if (!GetExfilControl())
@@ -168,7 +170,7 @@ namespace SAIN.Components.BotController
                         continue;
                     }
 
-                    yield return TryFindAllValidExfilsForBot(Bots[botKey]);
+                    yield return FindAllValidExfilsForBot(Bots[botKey]);
                 }
             }
             finally
@@ -177,68 +179,165 @@ namespace SAIN.Components.BotController
             }
         }
 
-        private bool TryFindAllValidExfilsForBot(SAINComponentClass bot)
+        private IEnumerator FindAllValidExfilsForBot(SAINComponentClass bot)
         {
             if (bot.IsDead)
             {
-                return false;
+                yield break;
             }
 
             if (bot.Info.Profile.IsScav)
             {
-                return CountAllValidExfilsForBot(bot, ValidScavExfils, AllScavExfils) > 0;
+                yield return FindAllValidExfilsForBot(bot, ValidScavExfils, AllScavExfils);
             }
 
-            return CountAllValidExfilsForBot(bot, ValidExfils, AllExfils) > 0;
+            yield return FindAllValidExfilsForBot(bot, ValidExfils, AllExfils);
         }
 
-        private int CountAllValidExfilsForBot<T>(SAINComponentClass bot, IDictionary<T, Vector3> validExfils, T[] allExfils) where T : ExfiltrationPoint
+        private static FieldInfo colliderField = AccessTools.Field(typeof(ExfiltrationPoint), "_collider");
+        private static float defaultExtractNavMeshSearchRadius = 3f;
+
+        private IEnumerator FindAllValidExfilsForBot<T>(SAINComponentClass bot, IDictionary<T, Vector3> validExfils, T[] allExfils) where T : ExfiltrationPoint
         {
             if (bot == null)
             {
-                return 0;
+                yield break;
             }
 
             if (allExfils == null)
             {
-                return 0;
+                yield break;
             }
 
             foreach (var ex in allExfils)
             {
-                if (ex == null)
-                {
-                    if (SAINPlugin.DebugMode)
-                        Logger.LogWarning($"Exfil is null in list!");
-
-                    continue;
-                }
-
                 if (validExfils.ContainsKey(ex))
                 {
                     continue;
                 }
 
-                if (!ex.TryGetComponent<Collider>(out var collider))
-                {
-                    if (SAINPlugin.DebugMode)
-                        Logger.LogWarning($"Could not find collider for {ex.Settings.Name}");
+                yield return null;
 
+                Vector3? Destination = GetTargetPositionForExtract(bot, ex);
+                if (Destination == null)
+                {
                     continue;
                 }
 
-                if (!bot.Mover.CanGoToPoint(collider.transform.position, out Vector3 Destination, true, 0.5f))
-                {
-                    if (SAINPlugin.DebugMode)
-                        Logger.LogWarning($"Could not find valid path to {ex.Settings.Name}");
+                validExfils.Add(ex, Destination.Value);
+            }
+        }
 
-                    continue;
-                }
+        private static Vector3? GetTargetPositionForExtract(SAINComponentClass bot, ExfiltrationPoint ex)
+        {
+            if (ex == null)
+            {
+                if (SAINPlugin.DebugMode)
+                    Logger.LogWarning($"Exfil is null in list!");
 
-                validExfils.Add(ex, Destination);
+                return null;
             }
 
-            return validExfils.Count;
+            BoxCollider collider = (BoxCollider)colliderField.GetValue(ex);
+            if (collider == null)
+            {
+                if (SAINPlugin.DebugMode)
+                    Logger.LogWarning($"Could not find collider for {ex.Settings.Name}");
+
+                return null;
+            }
+
+            float searchRadius = Math.Min(Math.Min(collider.size.x, collider.size.y), collider.size.z) / 2;
+            if (searchRadius == 0)
+            {
+                searchRadius = defaultExtractNavMeshSearchRadius;
+
+                //if (SAINPlugin.DebugMode)
+                    Logger.LogWarning($"Collider size of {ex.Settings.Name} is (0, 0, 0). Using {searchRadius}m to check accessibility.");
+            }
+
+            IEnumerable<Vector3> colliderTestPoints = GetExtractTestPoints(collider, searchRadius, 1);
+            if (!colliderTestPoints.Any())
+            {
+                colliderTestPoints = Enumerable.Repeat(collider.transform.position, 1);
+
+                //if (SAINPlugin.DebugMode)
+                    Logger.LogWarning($"Could not create test points. Using collider position instead");
+            }
+
+            searchRadius += 0.5f;
+
+            Vector3 Destination = Vector3.positiveInfinity;
+            bool foundPoint = false;
+            foreach (Vector3 testPoint in colliderTestPoints)
+            {
+                //Bounds colliderBounds = new Bounds(collider.transform.position, collider.size);
+
+                //if (SAINPlugin.DebugMode)
+                    //Logger.LogInfo($"Testing position {testPoint} for {ex.Settings.Name} at {colliderBounds.min}-{colliderBounds.max} using search radius {searchRadius}m");
+
+                if (bot.Mover.CanGoToPoint(testPoint, out Destination, true, searchRadius))
+                {
+                    foundPoint = true;
+                    break;
+                }
+            }
+
+            if (!foundPoint)
+            {
+                //if (SAINPlugin.DebugMode)
+                    Logger.LogWarning($"Could not find valid path to {ex.Settings.Name} of using search radius {searchRadius}m");
+
+                return null;
+            }
+
+            //if (SAINPlugin.DebugMode)
+                Logger.LogInfo($"Found extract postion {Destination} for {ex.Settings.Name} using search radius {searchRadius}m");
+
+            return Destination;
+        }
+
+        private static IEnumerable<Vector3> GetExtractTestPoints(BoxCollider collider, float radius, float overlap)
+        {
+            Bounds colliderBounds = new Bounds(collider.transform.position, collider.size);
+
+            IEnumerable<Vector3> colliderTestPoints = GetRelativeExtractTestPoints(colliderBounds, radius, overlap);
+            return colliderTestPoints;
+        }
+
+        private static IEnumerable<Vector3> GetRelativeExtractTestPoints(Bounds colliderBounds, float radius, float overlap)
+        {
+            float minExtent = Math.Min(Math.Min(colliderBounds.size.x, colliderBounds.size.x), colliderBounds.size.x) / 2;
+            if (minExtent < radius)
+            {
+                Logger.LogWarning($"Radius {radius} is smaller than min collider extent {minExtent}");
+                return Enumerable.Empty<Vector3>();
+            }
+
+            Vector3 origin = new Vector3(colliderBounds.min.x + radius, colliderBounds.min.y + radius, colliderBounds.min.z + radius);
+
+            List<Vector3> testPoints = new List<Vector3>();
+
+            int widthCount = (int)Math.Max(1, Math.Ceiling((colliderBounds.size.x - (radius * 2)) / (2 * radius * overlap)));
+            int lengthCount = (int)Math.Max(1, Math.Ceiling((colliderBounds.size.z - (radius * 2)) / (2 * radius * overlap)));
+            int heightCount = (int)Math.Max(1, Math.Ceiling((colliderBounds.size.y - (radius * 2)) / (2 * radius * overlap)));
+
+            float widthSpacing = Math.Max(0, (colliderBounds.size.x - (radius * 2)) / widthCount);
+            float lengthSpacing = Math.Max(0, (colliderBounds.size.z - (radius * 2)) / lengthCount);
+            float heightSpacing = Math.Max(0, (colliderBounds.size.y - (radius * 2)) / heightCount);
+
+            for (int x = 0; x <= widthCount; x++)
+            {
+                for (int y = 0; y <= heightCount; y++)
+                {
+                    for (int z = 0; z <= lengthCount; z++)
+                    {
+                        testPoints.Add(new Vector3(origin.x + (widthSpacing * x), origin.y + (heightSpacing * y), origin.z + (lengthSpacing * z)));
+                    }
+                }
+            }
+
+            return testPoints;
         }
 
         private float exfilSearchRetryDelay = 10;
@@ -277,13 +376,6 @@ namespace SAIN.Components.BotController
                 }
             }
 
-            if (AllExfils.Length == 0)
-            {
-                ResetExfilSearchTime(bot);
-
-                return false;
-            }
-
             if (!IsBotAllowedToExfil(bot))
             {
                 return false;
@@ -300,7 +392,10 @@ namespace SAIN.Components.BotController
                 Logger.LogInfo($"Looking for Exfil for {bot.name}...");
             }
 
-            if (TryFindAllValidExfilsForBot(bot))
+            FindAllValidExfilsForBot(bot).ToEnumerable().Count();
+            
+            int validExfils = bot.Info.Profile.IsScav ? ValidScavExfils.Count : ValidExfils.Count;
+            if (validExfils > 0)
             {
                 bool exfilAssigned = bot.Squad.BotInGroup ? TryAssignSquadExfil(bot) : TryAssignExfilForBot(bot);
             }
