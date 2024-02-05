@@ -1,5 +1,6 @@
 ﻿using Comfort.Common;
 using EFT;
+using SAIN.Components.BotController;
 using SAIN.Helpers;
 using System;
 using System.Collections.Generic;
@@ -15,6 +16,7 @@ namespace SAIN.Components
         private void Awake()
         {
             SAINBotController = this.GetOrAddComponent<SAINBotControllerComponent>();
+            ExtractFinder = this.GetOrAddComponent<Extract.ExtractFinderComponent>();
         }
 
         private void Update()
@@ -38,6 +40,7 @@ namespace SAIN.Components
         public GameWorld GameWorld => Singleton<GameWorld>.Instance;
         public SAINMainPlayerComponent SAINMainPlayer { get; private set; }
         public SAINBotControllerComponent SAINBotController { get; private set; }
+        public Extract.ExtractFinderComponent ExtractFinder { get; private set; }
     }
 
 }

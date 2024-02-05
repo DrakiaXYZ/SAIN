@@ -11,6 +11,9 @@ using SAIN.Helpers;
 using System.Collections;
 using System.Reflection;
 using HarmonyLib;
+using Unity.Jobs;
+using Unity.Collections;
+using UnityEngine.UIElements;
 
 namespace SAIN.Components.BotController
 {
@@ -18,12 +21,11 @@ namespace SAIN.Components.BotController
     {
         public BotExtractManager() { }
 
-        public ExfiltrationControllerClass ExfilController { get; private set; }
         public float TotalRaidTime { get; private set; }
         
         public void Update()
         {
-            if (!GetExfilControl())
+            if (Singleton<AbstractGame>.Instance?.GameTimer == null)
             {
                 return;
             }
@@ -33,57 +35,8 @@ namespace SAIN.Components.BotController
                 return;
             }
 
-            CheckRaidProgressTimer = Time.time + 5f;
-
             CheckTimeRemaining();
-
-            if (DebugCheckExfilTimer < Time.time)
-            {
-                DebugCheckExfilTimer = Time.time + 30f;
-                Logger.LogInfo(
-                    $"Seconds Remaining in Raid: [{TimeRemaining}] Percentage of Raid Remaining: [{PercentageRemaining}]. " +
-                    $"Total Raid Seconds: [{TotalRaidTime}] " +
-                    $"Found: [{ValidScavExfils.Count}] ScavExfils and " +
-                    $"[{ValidExfils.Count}] PMC Exfils to be used."
-                    );
-                // Logger.LogInfo(
-                //     $"Total PMC Exfils on this map: [{AllExfils?.Length}] and " +
-                //     $"[{AllScavExfils?.Length}] Total Scav Exfils")
-                //     ;
-            }
-        }
-
-        private bool GetExfilControl()
-        {
-            if (Singleton<AbstractGame>.Instance?.GameTimer == null)
-            {
-                return false;
-            }
-
-            if (ExfilController == null)
-            {
-                ExfilController = Singleton<GameWorld>.Instance.ExfiltrationController;
-            }
-            else
-            {
-                if (AllScavExfils == null)
-                {
-                    AllScavExfils = ExfilController.ScavExfiltrationPoints;
-                    if (SAINPlugin.DebugMode && AllScavExfils != null)
-                    {
-                        Logger.LogInfo($"Found {AllScavExfils?.Length} possible Scav Exfil Points in this map.");
-                    }
-                }
-                if (AllExfils == null)
-                {
-                    AllExfils = ExfilController.ExfiltrationPoints;
-                    if (SAINPlugin.DebugMode && AllExfils != null)
-                    {
-                        Logger.LogInfo($"Found {AllExfils?.Length} possible Exfil Points in this map.");
-                    }
-                }
-            }
-            return ExfilController != null;
+            CheckRaidProgressTimer = Time.time + 5f;
         }
 
         private Dictionary<ExfiltrationPoint, float> exfilActivationTimes = new Dictionary<ExfiltrationPoint, float>();
@@ -143,203 +96,6 @@ namespace SAIN.Components.BotController
             return exfilTime;
         }
 
-        private float DebugCheckExfilTimer = 0f;
-        public ScavExfiltrationPoint[] AllScavExfils { get; private set; }
-        public Dictionary<ScavExfiltrationPoint, Vector3> ValidScavExfils { get; private set; } = new Dictionary<ScavExfiltrationPoint, Vector3>();
-
-        public ExfiltrationPoint[] AllExfils { get; private set; }
-        public Dictionary<ExfiltrationPoint, Vector3> ValidExfils { get; private set; } = new Dictionary<ExfiltrationPoint, Vector3>();
-
-        public bool IsFindingAllValidExfilsForAllBots { get; private set; } = false;
-
-        public IEnumerator EnumerateAllValidExfilsForAllBots()
-        {
-            if (Bots == null)
-            {
-                yield break;
-            }
-
-            try
-            {
-                IsFindingAllValidExfilsForAllBots = true;
-
-                foreach (string botKey in Bots.Keys.ToArray())
-                {
-                    if (!Bots.ContainsKey(botKey))
-                    {
-                        continue;
-                    }
-
-                    yield return FindAllValidExfilsForBot(Bots[botKey]);
-                }
-            }
-            finally
-            {
-                IsFindingAllValidExfilsForAllBots = false;
-            }
-        }
-
-        private IEnumerator FindAllValidExfilsForBot(SAINComponentClass bot)
-        {
-            if (bot.IsDead)
-            {
-                yield break;
-            }
-
-            if (bot.Info.Profile.IsScav)
-            {
-                yield return FindAllValidExfilsForBot(bot, ValidScavExfils, AllScavExfils);
-            }
-
-            yield return FindAllValidExfilsForBot(bot, ValidExfils, AllExfils);
-        }
-
-        private static FieldInfo colliderField = AccessTools.Field(typeof(ExfiltrationPoint), "_collider");
-        private static float defaultExtractNavMeshSearchRadius = 3f;
-
-        private IEnumerator FindAllValidExfilsForBot<T>(SAINComponentClass bot, IDictionary<T, Vector3> validExfils, T[] allExfils) where T : ExfiltrationPoint
-        {
-            if (bot == null)
-            {
-                yield break;
-            }
-
-            if (allExfils == null)
-            {
-                yield break;
-            }
-
-            foreach (var ex in allExfils)
-            {
-                if (validExfils.ContainsKey(ex))
-                {
-                    continue;
-                }
-
-                yield return null;
-
-                Vector3? Destination = GetTargetPositionForExtract(bot, ex);
-                if (Destination == null)
-                {
-                    continue;
-                }
-
-                validExfils.Add(ex, Destination.Value);
-            }
-        }
-
-        private static Vector3? GetTargetPositionForExtract(SAINComponentClass bot, ExfiltrationPoint ex)
-        {
-            if (ex == null)
-            {
-                if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Exfil is null in list!");
-
-                return null;
-            }
-
-            BoxCollider collider = (BoxCollider)colliderField.GetValue(ex);
-            if (collider == null)
-            {
-                if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Could not find collider for {ex.Settings.Name}");
-
-                return null;
-            }
-
-            float searchRadius = Math.Min(Math.Min(collider.size.x, collider.size.y), collider.size.z) / 2;
-            if (searchRadius == 0)
-            {
-                searchRadius = defaultExtractNavMeshSearchRadius;
-
-                //if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Collider size of {ex.Settings.Name} is (0, 0, 0). Using {searchRadius}m to check accessibility.");
-            }
-
-            IEnumerable<Vector3> colliderTestPoints = GetExtractTestPoints(collider, searchRadius, 1);
-            if (!colliderTestPoints.Any())
-            {
-                colliderTestPoints = Enumerable.Repeat(collider.transform.position, 1);
-
-                //if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Could not create test points. Using collider position instead");
-            }
-
-            searchRadius += 0.5f;
-
-            Vector3 Destination = Vector3.positiveInfinity;
-            bool foundPoint = false;
-            foreach (Vector3 testPoint in colliderTestPoints)
-            {
-                //Bounds colliderBounds = new Bounds(collider.transform.position, collider.size);
-
-                //if (SAINPlugin.DebugMode)
-                    //Logger.LogInfo($"Testing position {testPoint} for {ex.Settings.Name} at {colliderBounds.min}-{colliderBounds.max} using search radius {searchRadius}m");
-
-                if (bot.Mover.CanGoToPoint(testPoint, out Destination, true, searchRadius))
-                {
-                    foundPoint = true;
-                    break;
-                }
-            }
-
-            if (!foundPoint)
-            {
-                //if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Could not find valid path to {ex.Settings.Name} of using search radius {searchRadius}m");
-
-                return null;
-            }
-
-            //if (SAINPlugin.DebugMode)
-                Logger.LogInfo($"Found extract postion {Destination} for {ex.Settings.Name} using search radius {searchRadius}m");
-
-            return Destination;
-        }
-
-        private static IEnumerable<Vector3> GetExtractTestPoints(BoxCollider collider, float radius, float overlap)
-        {
-            Bounds colliderBounds = new Bounds(collider.transform.position, collider.size);
-
-            IEnumerable<Vector3> colliderTestPoints = GetRelativeExtractTestPoints(colliderBounds, radius, overlap);
-            return colliderTestPoints;
-        }
-
-        private static IEnumerable<Vector3> GetRelativeExtractTestPoints(Bounds colliderBounds, float radius, float overlap)
-        {
-            float minExtent = Math.Min(Math.Min(colliderBounds.size.x, colliderBounds.size.x), colliderBounds.size.x) / 2;
-            if (minExtent < radius)
-            {
-                Logger.LogWarning($"Radius {radius} is smaller than min collider extent {minExtent}");
-                return Enumerable.Empty<Vector3>();
-            }
-
-            Vector3 origin = new Vector3(colliderBounds.min.x + radius, colliderBounds.min.y + radius, colliderBounds.min.z + radius);
-
-            List<Vector3> testPoints = new List<Vector3>();
-
-            int widthCount = (int)Math.Max(1, Math.Ceiling((colliderBounds.size.x - (radius * 2)) / (2 * radius * overlap)));
-            int lengthCount = (int)Math.Max(1, Math.Ceiling((colliderBounds.size.z - (radius * 2)) / (2 * radius * overlap)));
-            int heightCount = (int)Math.Max(1, Math.Ceiling((colliderBounds.size.y - (radius * 2)) / (2 * radius * overlap)));
-
-            float widthSpacing = Math.Max(0, (colliderBounds.size.x - (radius * 2)) / widthCount);
-            float lengthSpacing = Math.Max(0, (colliderBounds.size.z - (radius * 2)) / lengthCount);
-            float heightSpacing = Math.Max(0, (colliderBounds.size.y - (radius * 2)) / heightCount);
-
-            for (int x = 0; x <= widthCount; x++)
-            {
-                for (int y = 0; y <= heightCount; y++)
-                {
-                    for (int z = 0; z <= lengthCount; z++)
-                    {
-                        testPoints.Add(new Vector3(origin.x + (widthSpacing * x), origin.y + (heightSpacing * y), origin.z + (lengthSpacing * z)));
-                    }
-                }
-            }
-
-            return testPoints;
-        }
-
         private float exfilSearchRetryDelay = 10;
         private Dictionary<SAINComponentClass, float> botExfilSearchRetryTime = new Dictionary<SAINComponentClass, float>();
 
@@ -392,9 +148,7 @@ namespace SAIN.Components.BotController
                 Logger.LogInfo($"Looking for Exfil for {bot.name}...");
             }
 
-            FindAllValidExfilsForBot(bot).ToEnumerable().Count();
-            
-            int validExfils = bot.Info.Profile.IsScav ? ValidScavExfils.Count : ValidExfils.Count;
+            int validExfils = GameWorldHandler.SAINGameWorld.ExtractFinder.CountValidExfilsForBot(bot);
             if (validExfils > 0)
             {
                 bool exfilAssigned = bot.Squad.BotInGroup ? TryAssignSquadExfil(bot) : TryAssignExfilForBot(bot);
@@ -434,27 +188,23 @@ namespace SAIN.Components.BotController
 
         public bool TryAssignExfilForBot(SAINComponentClass bot)
         {
-            if (bot?.Info?.Profile.IsScav == true)
-            {
-                bot.Memory.ExfilPoint = selectExfilForBot(bot, ValidScavExfils);
-            }
-            if (bot?.Info?.Profile.IsPMC == true)
-            {
-                bot.Memory.ExfilPoint = selectExfilForBot(bot, ValidExfils);
-            }
+            IDictionary<ExfiltrationPoint, Vector3> validExfils = GameWorldHandler.SAINGameWorld.ExtractFinder.GetValidExfilsForBot(bot);
+            bot.Memory.ExfilPoint = selectExfilForBot(bot, validExfils);
 
             return bot.Memory.ExfilPoint != null;
         }
 
         public static float MinDistanceToExtract { get; private set; } = 10f;
 
-        private T selectExfilForBot<T>(SAINComponentClass bot, IDictionary<T, Vector3> validExfils) where T: ExfiltrationPoint
+        private ExfiltrationPoint selectExfilForBot(SAINComponentClass bot, IDictionary<ExfiltrationPoint, Vector3> validExfils)
         {
             // Check each valid extract to ensure the bot can use it and that it isn't too close. If this method is called when a bot is near an extract, it might be because
             // it got stuck. 
-            IDictionary<T, Vector3> possibleExfils = validExfils
+            NavMeshPath path = new NavMeshPath();
+            IDictionary<ExfiltrationPoint, Vector3> possibleExfils = validExfils
                     .Where(x => CanUseExtract(x.Key))
                     .Where(x => Vector3.Distance(bot.Position, x.Value) > MinDistanceToExtract)
+                    .Where(x => NavMesh.CalculatePath(bot.Position, x.Value, -1, path) && (path.status == NavMeshPathStatus.PathComplete))
                     .ToDictionary(x => x.Key, x => x.Value);
 
             if (!possibleExfils.Any())
@@ -467,7 +217,7 @@ namespace SAIN.Components.BotController
                 return null;
             }
 
-            KeyValuePair<T, Vector3> selectedExfil = possibleExfils.Random();
+            KeyValuePair<ExfiltrationPoint, Vector3> selectedExfil = possibleExfils.Random();
             bot.Memory.ExfilPosition = selectedExfil.Value;
 
             if (SAINPlugin.DebugMode)
