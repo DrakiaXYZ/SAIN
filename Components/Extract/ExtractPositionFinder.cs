@@ -9,7 +9,6 @@ using SAIN.SAINComponent;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -25,16 +24,56 @@ namespace SAIN.Components.Extract
         public Vector3? ExtractPosition { get; private set; } = null;
         public Vector3? NearestSpawnPosition { get; private set; } = null;
         public float NavMeshSearchRadius { get; private set; } = 0;
-        public Vector3[] NavMeshTestPoints { get; private set; } = new Vector3[0];
-
+        public Stack<Vector3> NavMeshTestPoints { get; private set; } = new Stack<Vector3>();
+        
         private static FieldInfo colliderField = AccessTools.Field(typeof(ExfiltrationPoint), "_collider");
+        private GameObject DebugSphere = null;
         private static float defaultExtractNavMeshSearchRadius = 3f;
+        private static float maxExtractNavMeshSearchRadius = 3f;
+        private static float finalExtractNavMeshSearchRadiusAddition = 0.5f;
 
         private ExfiltrationPoint ex;
 
         public ExtractPositionFinder(ExfiltrationPoint _ex)
         {
             ex = _ex;
+        }
+
+        public static GameObject CreateSphere(Vector3 position, float size, Color color)
+        {
+            GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.GetComponent<Renderer>().material.color = color;
+            sphere.GetComponent<Collider>().enabled = false;
+            sphere.transform.position = position;
+            sphere.transform.localScale = new Vector3(size, size, size);
+
+            return sphere;
+        }
+
+        public void CreateDebugSphere(Color color)
+        {
+            if (!ExtractPosition.HasValue)
+            {
+                return;
+            }
+
+            if (DebugSphere == null)
+            {
+                DebugSphere = CreateSphere(ExtractPosition.Value, 0.5f, color);
+            }
+
+            DebugSphere.transform.position = ExtractPosition.Value;
+        }
+
+        public void RemoveDebugSphere()
+        {
+            if (DebugSphere == null)
+            {
+                return;
+            }
+
+            UnityEngine.Object.Destroy(DebugSphere);
+            DebugSphere = null;
         }
 
         public IEnumerator SearchForExfilPosition()
@@ -47,43 +86,76 @@ namespace SAIN.Components.Extract
                 yield break;
             }
 
-            FindExtractPosition();
-            if (ExtractPosition == null)
+            if (!TryFindExtractPositionsOnNavMesh())
             {
                 //if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Cannot find NavMesh position for {ex.Settings.Name}");
+                    Logger.LogWarning($"Cannot find any NavMesh positions for {ex.Settings.Name}");
 
                 yield break;
             }
+
+            ExtractPosition = NavMeshTestPoints.Pop();
+            //if (SAINPlugin.DebugMode)
+                Logger.LogInfo($"Testing point {ExtractPosition} for {ex.Settings.Name}. {NavMeshTestPoints.Count} test points remaining.");
 
             FindNearestSpawnPointPosition(ExtractPosition.Value);
             if (NearestSpawnPosition == null)
             {
                 //if (SAINPlugin.DebugMode)
                     Logger.LogWarning($"Could not find a spawn position near {ex.Settings.Name}");
-
-                yield break;
             }
 
-            if (!NavMeshHelpers.DoesCompletePathExist(NearestSpawnPosition.Value, ExtractPosition.Value))
+            /*Vector3? nearestPlayerPosition = FindNearestPlayerPosition(ExtractPosition.Value);
+            if (nearestPlayerPosition == null)
             {
                 //if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Could not find a complete path to {ex.Settings.Name}");
+                    Logger.LogWarning($"Could not find a player position near {ex.Settings.Name}");
+            }*/
+
+            if 
+            (
+                (NearestSpawnPosition.HasValue && DoesCompletePathExist(NearestSpawnPosition.Value))
+                //|| (nearestPlayerPosition.HasValue && DoesCompletePathExist(nearestPlayerPosition.Value))
+            )
+            {
+                ValidPathFound = true;
+
+                //if (SAINPlugin.DebugMode)
+                    Logger.LogInfo($"Found complete path to {ex.Settings.Name}");
 
                 yield break;
             }
 
-            ValidPathFound = true;
-
             //if (SAINPlugin.DebugMode)
-                Logger.LogInfo($"Found complete path to {ex.Settings.Name}");
+                Logger.LogWarning($"Could not find a complete path to {ex.Settings.Name}");
         }
 
-        private Vector3? FindExtractPosition()
+        private bool DoesCompletePathExist(Vector3 point)
         {
-            if (ExtractPosition != null)
+            if (!ExtractPosition.HasValue)
             {
-                return ExtractPosition;
+                throw new InvalidOperationException("An extract position must be set before a path can be checked to it");
+            }
+
+            if (!NavMeshHelpers.DoesCompletePathExist(point, ExtractPosition.Value))
+            {
+                //if (SAINPlugin.DebugMode)
+                {
+                    float distance = Vector3.Distance(ex.transform.position, point);
+                    Logger.LogWarning($"Could not find a complete path to {ex.Settings.Name} from {point} ({distance}m away)");
+                }
+
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryFindExtractPositionsOnNavMesh()
+        {
+            if (NavMeshTestPoints.Any())
+            {
+                return true;
             }
 
             BoxCollider collider = (BoxCollider)colliderField.GetValue(ex);
@@ -92,10 +164,11 @@ namespace SAIN.Components.Extract
                 //if (SAINPlugin.DebugMode)
                     Logger.LogWarning($"Could not find collider for {ex.Settings.Name}");
 
-                return null;
+                return false;
             }
 
             NavMeshSearchRadius = Math.Min(Math.Min(collider.size.x, collider.size.y), collider.size.z) / 2;
+            NavMeshSearchRadius = Math.Min(NavMeshSearchRadius, maxExtractNavMeshSearchRadius);
             if (NavMeshSearchRadius == 0)
             {
                 NavMeshSearchRadius = defaultExtractNavMeshSearchRadius;
@@ -113,7 +186,7 @@ namespace SAIN.Components.Extract
                     Logger.LogWarning($"Could not create test points. Using collider position instead");
             }
 
-            NavMeshSearchRadius += 0.5f;
+            NavMeshSearchRadius += finalExtractNavMeshSearchRadiusAddition;
 
             List<Vector3> navMeshPoints = new List<Vector3>();
             foreach (Vector3 testPoint in colliderTestPoints)
@@ -124,26 +197,47 @@ namespace SAIN.Components.Extract
                     continue;
                 }
 
+                if (navMeshPoints.Any(x => x == navMeshPoint))
+                {
+                    continue;
+                }
+
                 navMeshPoints.Add(navMeshPoint.Value);
             }
 
-            NavMeshTestPoints = navMeshPoints.ToArray();
-
-            IEnumerable<Vector3> sortedNavMeshPoints = navMeshPoints.OrderBy(x => Vector3.Distance(x, ex.transform.position));
-            if (!sortedNavMeshPoints.Any())
+            if (!navMeshPoints.Any())
             {
                 //if (SAINPlugin.DebugMode)
                     Logger.LogWarning($"Could not find any NavMesh points for {ex.Settings.Name} from {colliderTestPoints.Count()} test points using radius {NavMeshSearchRadius}m");
 
-                return null;
+                return false;
             }
 
-            ExtractPosition = sortedNavMeshPoints.First();
+            List<Vector3> navMeshPointsToSort = navMeshPoints.ToArray().ToList();
+            List<Vector3> sortedNavMeshPoints = new List<Vector3>();
+            Vector3 referencePoint = ex.transform.position;
+            bool chooseFirst = true;
+            while (navMeshPointsToSort.Count > 0)
+            {
+                IEnumerable<Vector3> tmpSortedNavMeshPoints = navMeshPointsToSort.OrderBy(x => Vector3.Distance(x, referencePoint));
+
+                referencePoint = chooseFirst ? tmpSortedNavMeshPoints.First() : tmpSortedNavMeshPoints.Last();
+                chooseFirst = !chooseFirst;
+
+                sortedNavMeshPoints.Add(referencePoint);
+                navMeshPointsToSort.Remove(referencePoint);
+            }
+
+            sortedNavMeshPoints.Reverse();
+            foreach (Vector3 testPoint in sortedNavMeshPoints)
+            {
+                NavMeshTestPoints.Push(testPoint);
+            }
 
             //if (SAINPlugin.DebugMode)
-                Logger.LogInfo($"Found extract postion {ExtractPosition} for {ex.Settings.Name} using search radius {NavMeshSearchRadius}m");
+                Logger.LogInfo($"Found {NavMeshTestPoints.Count} extract postions for {ex.Settings.Name} using search radius {NavMeshSearchRadius}m");
 
-            return ExtractPosition;
+            return true;
         }
 
         private static Vector3? GetNearbyNavMeshPoint(Vector3 testPoint, float radius)
@@ -175,6 +269,17 @@ namespace SAIN.Components.Extract
             NearestSpawnPosition = sortedSpawnPoints.First().Position;
 
             return NearestSpawnPosition;
+        }
+
+        private Vector3? FindNearestPlayerPosition(Vector3 testPoint)
+        {
+            List<Player> allPlayers = Singleton<GameWorld>.Instance.AllAlivePlayersList;
+            if (allPlayers.Count == 0)
+            {
+                return null;
+            }
+
+            return allPlayers.OrderBy(x => Vector3.Distance(testPoint, x.Position)).First().Position;
         }
     }
 }

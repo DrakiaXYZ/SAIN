@@ -23,7 +23,9 @@ namespace SAIN.Components.Extract
         private Dictionary<ExfiltrationPoint, Vector3> ValidExfils = new Dictionary<ExfiltrationPoint, Vector3>();
         private Dictionary<ExfiltrationPoint, Vector3> ValidScavExfils = new Dictionary<ExfiltrationPoint, Vector3>();
         private Dictionary<ExfiltrationPoint, ExtractPositionFinder> extractPositionFinders = new Dictionary<ExfiltrationPoint, ExtractPositionFinder>();
-        private float CheckExtractTimer = 0f;
+
+        private float CheckExtractDelay = 10f;
+        private float NextCheckExtractTime = 0f;
 
         public void Update()
         {
@@ -32,12 +34,12 @@ namespace SAIN.Components.Extract
                 return;
             }
 
-            if (CheckExtractTimer > Time.time)
+            if (NextCheckExtractTime > Time.time)
             {
                 return;
             }
 
-            CheckExtractTimer = Time.time + 20f;
+            NextCheckExtractTime = Time.time + CheckExtractDelay;
 
             if (!IsFindingExtracts)
             {
@@ -115,14 +117,18 @@ namespace SAIN.Components.Extract
                 }
 
                 ExtractPositionFinder finder = GetExtractPositionSearchJob(ex);
-                yield return finder.SearchForExfilPosition();
-
                 if (!finder.ValidPathFound)
                 {
+                    yield return finder.SearchForExfilPosition();
+                }
+                if (!finder.ValidPathFound)
+                {
+                    finder.CreateDebugSphere(Color.red);
                     continue;
                 }
 
                 validExfils.Add(ex, finder.ExtractPosition.Value);
+                finder.CreateDebugSphere(Color.green);
             }
         }
 
