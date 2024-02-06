@@ -27,12 +27,12 @@ namespace SAIN.Components.Extract
         public Stack<Vector3> NavMeshTestPoints { get; private set; } = new Stack<Vector3>();
         
         private static FieldInfo colliderField = AccessTools.Field(typeof(ExfiltrationPoint), "_collider");
-        private GameObject DebugSphere = null;
         private static float defaultExtractNavMeshSearchRadius = 3f;
         private static float maxExtractNavMeshSearchRadius = 3f;
         private static float finalExtractNavMeshSearchRadiusAddition = 0.5f;
 
-        private ExfiltrationPoint ex;
+        private GameObject DebugSphere = null;
+        private ExfiltrationPoint ex = null;
 
         public ExtractPositionFinder(ExfiltrationPoint _ex)
         {
@@ -63,6 +63,7 @@ namespace SAIN.Components.Extract
             }
 
             DebugSphere.transform.position = ExtractPosition.Value;
+            DebugSphere.GetComponent<Renderer>().material.color = color;
         }
 
         public void RemoveDebugSphere()
@@ -260,13 +261,23 @@ namespace SAIN.Components.Extract
             BotSpawner botSpawnerClass = Singleton<IBotGame>.Instance.BotsController.BotSpawner;
             BotZone closestBotZone = botSpawnerClass.GetClosestZone(testPoint, out float dist);
 
-            IEnumerable<ISpawnPoint> sortedSpawnPoints = closestBotZone.SpawnPoints.OrderBy(x => Vector3.Distance(x.Position, testPoint));
-            if (!sortedSpawnPoints.Any())
+            List<Vector3> navMeshPoints = new List<Vector3>();
+            foreach(ISpawnPoint spawnPoint in closestBotZone.SpawnPoints)
+            {
+                Vector3? navMeshPoint = GetNearbyNavMeshPoint(spawnPoint.Position, 2);
+                if (navMeshPoint.HasValue)
+                {
+                    navMeshPoints.Add(navMeshPoint.Value);
+                }
+            }
+
+            IEnumerable<Vector3> sortedNavMeshPoints = navMeshPoints.OrderBy(x => Vector3.Distance(x, testPoint));
+            if (!sortedNavMeshPoints.Any())
             {
                 return null;
             }
 
-            NearestSpawnPosition = sortedSpawnPoints.First().Position;
+            NearestSpawnPosition = sortedNavMeshPoints.First();
 
             return NearestSpawnPosition;
         }
