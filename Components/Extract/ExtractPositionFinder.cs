@@ -31,7 +31,6 @@ namespace SAIN.Components.Extract
         private static float maxExtractNavMeshSearchRadius = 3f;
         private static float finalExtractNavMeshSearchRadiusAddition = 0.5f;
 
-        private GameObject DebugSphere = null;
         private ExfiltrationPoint ex = null;
 
         public ExtractPositionFinder(ExfiltrationPoint _ex)
@@ -39,46 +38,13 @@ namespace SAIN.Components.Extract
             ex = _ex;
         }
 
-        public static GameObject CreateSphere(Vector3 position, float size, Color color)
-        {
-            GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            sphere.GetComponent<Renderer>().material.color = color;
-            sphere.GetComponent<Collider>().enabled = false;
-            sphere.transform.position = position;
-            sphere.transform.localScale = new Vector3(size, size, size);
-
-            return sphere;
-        }
-
-        public void CreateDebugSphere(Color color)
-        {
-            if (!ExtractPosition.HasValue)
-            {
-                return;
-            }
-
-            if (DebugSphere == null)
-            {
-                DebugSphere = CreateSphere(ExtractPosition.Value, 0.5f, color);
-            }
-
-            DebugSphere.transform.position = ExtractPosition.Value;
-            DebugSphere.GetComponent<Renderer>().material.color = color;
-        }
-
-        public void RemoveDebugSphere()
-        {
-            if (DebugSphere == null)
-            {
-                return;
-            }
-
-            UnityEngine.Object.Destroy(DebugSphere);
-            DebugSphere = null;
-        }
-
         public IEnumerator SearchForExfilPosition()
         {
+            if (ValidPathFound)
+            {
+                yield break;
+            }
+
             if (ex == null)
             {
                 if (SAINPlugin.DebugMode)
@@ -104,20 +70,11 @@ namespace SAIN.Components.Extract
             {
                 //if (SAINPlugin.DebugMode)
                     Logger.LogWarning($"Could not find a spawn position near {ex.Settings.Name}");
+
+                yield break;
             }
 
-            /*Vector3? nearestPlayerPosition = FindNearestPlayerPosition(ExtractPosition.Value);
-            if (nearestPlayerPosition == null)
-            {
-                //if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Could not find a player position near {ex.Settings.Name}");
-            }*/
-
-            if 
-            (
-                (NearestSpawnPosition.HasValue && DoesCompletePathExist(NearestSpawnPosition.Value))
-                //|| (nearestPlayerPosition.HasValue && DoesCompletePathExist(nearestPlayerPosition.Value))
-            )
+            if (DoesCompletePathExist(NearestSpawnPosition.Value))
             {
                 ValidPathFound = true;
 
@@ -142,8 +99,9 @@ namespace SAIN.Components.Extract
             {
                 //if (SAINPlugin.DebugMode)
                 {
-                    float distance = Vector3.Distance(ex.transform.position, point);
-                    Logger.LogWarning($"Could not find a complete path to {ex.Settings.Name} from {point} ({distance}m away)");
+                    float distanceBetweenPoints = Vector3.Distance(ex.transform.position, point);
+
+                    Logger.LogWarning($"Could not find a complete path to {ex.Settings.Name} from {point} ({distanceBetweenPoints}m away).");
                 }
 
                 return false;
@@ -258,13 +216,10 @@ namespace SAIN.Components.Extract
                 return NearestSpawnPosition;
             }
 
-            BotSpawner botSpawnerClass = Singleton<IBotGame>.Instance.BotsController.BotSpawner;
-            BotZone closestBotZone = botSpawnerClass.GetClosestZone(testPoint, out float dist);
-
             List<Vector3> navMeshPoints = new List<Vector3>();
-            foreach(ISpawnPoint spawnPoint in closestBotZone.SpawnPoints)
+            foreach(SpawnPointMarker spawnPointMarker in GameWorldHandler.SAINGameWorld.SpawnPointMarkers)
             {
-                Vector3? navMeshPoint = GetNearbyNavMeshPoint(spawnPoint.Position, 2);
+                Vector3? navMeshPoint = GetNearbyNavMeshPoint(spawnPointMarker.Position, 2);
                 if (navMeshPoint.HasValue)
                 {
                     navMeshPoints.Add(navMeshPoint.Value);
@@ -280,17 +235,6 @@ namespace SAIN.Components.Extract
             NearestSpawnPosition = sortedNavMeshPoints.First();
 
             return NearestSpawnPosition;
-        }
-
-        private Vector3? FindNearestPlayerPosition(Vector3 testPoint)
-        {
-            List<Player> allPlayers = Singleton<GameWorld>.Instance.AllAlivePlayersList;
-            if (allPlayers.Count == 0)
-            {
-                return null;
-            }
-
-            return allPlayers.OrderBy(x => Vector3.Distance(testPoint, x.Position)).First().Position;
         }
     }
 }

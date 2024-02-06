@@ -1,5 +1,6 @@
 ﻿using Comfort.Common;
 using EFT;
+using EFT.Game.Spawning;
 using SAIN.Components.BotController;
 using SAIN.Helpers;
 using System;
@@ -22,6 +23,8 @@ namespace SAIN.Components
         private void Update()
         {
             //SAINMainPlayer = ComponentHelpers.AddOrDestroyComponent(SAINMainPlayer, GameWorld?.MainPlayer);
+
+            findSpawnPointMarkers();
         }
 
         private void OnDestroy()
@@ -37,10 +40,22 @@ namespace SAIN.Components
             }
         }
 
+        private void findSpawnPointMarkers()
+        {
+            if ((SpawnPointMarkers != null) || (Camera.main == null))
+            {
+                return;
+            }
+
+            SpawnPointMarkers = UnityEngine.Object.FindObjectsOfType<SpawnPointMarker>();
+            Logger.LogInfo($"Found {SpawnPointMarkers.Length} spawn point markers");
+        }
+
         public GameWorld GameWorld => Singleton<GameWorld>.Instance;
-        public SAINMainPlayerComponent SAINMainPlayer { get; private set; }
-        public SAINBotControllerComponent SAINBotController { get; private set; }
-        public Extract.ExtractFinderComponent ExtractFinder { get; private set; }
+        public SAINMainPlayerComponent SAINMainPlayer { get; private set; } = null;
+        public SAINBotControllerComponent SAINBotController { get; private set; } = null;
+        public Extract.ExtractFinderComponent ExtractFinder { get; private set; } = null;
+        public SpawnPointMarker[] SpawnPointMarkers { get; private set; } = null;
     }
 
 }

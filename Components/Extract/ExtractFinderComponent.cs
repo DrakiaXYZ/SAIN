@@ -1,6 +1,7 @@
 ﻿using Comfort.Common;
 using EFT;
 using EFT.Interactive;
+using SAIN.Helpers;
 using SAIN.SAINComponent;
 using System;
 using System.Collections;
@@ -8,9 +9,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Unity.Jobs;
 using UnityEngine;
-using UnityEngine.UIElements;
 
 namespace SAIN.Components.Extract
 {
@@ -26,13 +25,19 @@ namespace SAIN.Components.Extract
 
         private float CheckExtractDelay = 10f;
         private float NextCheckExtractTime = 0f;
-
+        private bool hasExfilControl = false;
+        
         public void Update()
         {
-            if (!GetExfilControl())
+            if (!hasExfilControl && !GetExfilControl())
             {
+                // This is important! Need to wait a couple frames for Waypoints to add NavMeshObstacles to locked doors. 
+                NextCheckExtractTime = Time.time + 0.1f;
+                
                 return;
             }
+
+            hasExfilControl = true;
 
             if (NextCheckExtractTime > Time.time)
             {
@@ -43,8 +48,6 @@ namespace SAIN.Components.Extract
 
             if (!IsFindingExtracts)
             {
-                // This should be done regularly because the method checks if bots can path to each extract. However, it needs to be done
-                // in a coroutine to minimize the performance impact
                 StartCoroutine(FindAllExfils());
             }
         }
@@ -52,6 +55,52 @@ namespace SAIN.Components.Extract
         public void OnDisable()
         {
             StopAllCoroutines();
+        }
+
+        public void OnGUI()
+        {
+            if (!DebugGizmos.DrawGizmos)
+            {
+                return;
+            }
+
+            GUIStyle guiStyle = new GUIStyle(GUI.skin.label);
+            guiStyle.alignment = TextAnchor.MiddleLeft;
+            guiStyle.fontSize = 14;
+            guiStyle.margin = new RectOffset(3, 3, 3, 3);
+
+            foreach (ExfiltrationPoint ex in extractPositionFinders.Keys)
+            {
+                if (extractPositionFinders[ex].NearestSpawnPosition.HasValue)
+                {
+                    Vector3 worldPos = extractPositionFinders[ex].NearestSpawnPosition.Value + new Vector3(0, 1, 0);
+                    DrawLabel(worldPos, "Spawn point: " + ex.Settings.Name, guiStyle);
+                }
+
+                if (extractPositionFinders[ex].ExtractPosition.HasValue)
+                {
+                    Vector3 worldPos = extractPositionFinders[ex].ExtractPosition.Value + new Vector3(0, 1, 0);
+                    DrawLabel(worldPos, "Extract point: " + ex.Settings.Name, guiStyle);
+                }
+            }
+        }
+
+        private void DrawLabel(Vector3 worldPos, string text, GUIStyle guiStyle)
+        {
+            Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
+            if (screenPos.z <= 0)
+            {
+                return;
+            }
+
+            GUIContent content = new GUIContent(text);
+
+            float screenScale = 1.0f;
+            Vector2 guiSize = guiStyle.CalcSize(content);
+            float x = (screenPos.x * screenScale) - (guiSize.x / 2);
+            float y = Screen.height - ((screenPos.y * screenScale) + guiSize.y);
+            Rect rect = new Rect(new Vector2(x, y), guiSize);
+            GUI.Label(rect, content);
         }
 
         public int CountValidExfilsForBot(SAINComponentClass bot)
@@ -89,7 +138,7 @@ namespace SAIN.Components.Extract
                 Logger.LogInfo($"Found {AllScavExfils?.Length} possible Scav Exfil Points in this map.");
             }
 
-            return true;
+            return (AllExfils != null) && (AllScavExfils != null);
         }
 
         private IEnumerator FindAllExfils()
@@ -111,24 +160,35 @@ namespace SAIN.Components.Extract
 
             foreach (var ex in allExfils)
             {
+                ExtractPositionFinder finder = GetExtractPositionSearchJob(ex);
+
+                if (DebugGizmos.DrawGizmos && finder.NearestSpawnPosition.HasValue)
+                {
+                    DebugGizmos.Sphere(finder.NearestSpawnPosition.Value, 1f, Color.blue, true, CheckExtractDelay);
+                }
+
                 if (validExfils.ContainsKey(ex))
                 {
+                    if (DebugGizmos.DrawGizmos)
+                    {
+                        DebugGizmos.Sphere(finder.ExtractPosition.Value, 1f, Color.green, true, CheckExtractDelay);
+                    }
+
                     continue;
                 }
 
-                ExtractPositionFinder finder = GetExtractPositionSearchJob(ex);
-                if (!finder.ValidPathFound)
+                yield return finder.SearchForExfilPosition();
+
+                if (finder.ValidPathFound)
                 {
-                    yield return finder.SearchForExfilPosition();
-                }
-                if (!finder.ValidPathFound)
-                {
-                    finder.CreateDebugSphere(Color.red);
+                    validExfils.Add(ex, finder.ExtractPosition.Value);
                     continue;
                 }
 
-                validExfils.Add(ex, finder.ExtractPosition.Value);
-                finder.CreateDebugSphere(Color.green);
+                if (DebugGizmos.DrawGizmos && finder.ExtractPosition.HasValue)
+                {
+                    DebugGizmos.Sphere(finder.ExtractPosition.Value, 1f, Color.red, true, CheckExtractDelay);
+                }
             }
         }
 
