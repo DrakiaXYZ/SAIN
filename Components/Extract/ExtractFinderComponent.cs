@@ -71,10 +71,11 @@ namespace SAIN.Components.Extract
 
             foreach (ExfiltrationPoint ex in extractPositionFinders.Keys)
             {
-                if (extractPositionFinders[ex].NearestSpawnPosition.HasValue)
+                Vector3[] pathEndpoints = extractPositionFinders[ex].PathEndpoints.ToArray();
+                for (int i = 0; i < pathEndpoints.Length; i++)
                 {
-                    Vector3 worldPos = extractPositionFinders[ex].NearestSpawnPosition.Value + new Vector3(0, 1, 0);
-                    DrawLabel(worldPos, "Spawn point: " + ex.Settings.Name, guiStyle);
+                    Vector3 worldPos = pathEndpoints[i] + new Vector3(0, 1, 0);
+                    DrawLabel(worldPos, "Path Endpoint " + (i + 1) + ": " + ex.Settings.Name, guiStyle);
                 }
 
                 if (extractPositionFinders[ex].ExtractPosition.HasValue)
@@ -101,6 +102,25 @@ namespace SAIN.Components.Extract
             float y = Screen.height - ((screenPos.y * screenScale) + guiSize.y);
             Rect rect = new Rect(new Vector2(x, y), guiSize);
             GUI.Label(rect, content);
+        }
+
+        private void DrawGizmoSpheres(ExtractPositionFinder finder)
+        {
+            if (!DebugGizmos.DrawGizmos)
+            {
+                return;
+            }
+
+            foreach (Vector3 pathEndPoint in finder.PathEndpoints)
+            {
+                DebugGizmos.Sphere(pathEndPoint, 1f, Color.blue, true, CheckExtractDelay);
+            }
+
+            if (finder.ExtractPosition.HasValue)
+            {
+                Color color = finder.ValidPathFound ? Color.green : Color.red;
+                DebugGizmos.Sphere(finder.ExtractPosition.Value, 1f, color, true, CheckExtractDelay);
+            }
         }
 
         public int CountValidExfilsForBot(SAINComponentClass bot)
@@ -162,32 +182,21 @@ namespace SAIN.Components.Extract
             {
                 ExtractPositionFinder finder = GetExtractPositionSearchJob(ex);
 
-                if (DebugGizmos.DrawGizmos && finder.NearestSpawnPosition.HasValue)
-                {
-                    DebugGizmos.Sphere(finder.NearestSpawnPosition.Value, 1f, Color.blue, true, CheckExtractDelay);
-                }
-
                 if (validExfils.ContainsKey(ex))
                 {
-                    if (DebugGizmos.DrawGizmos)
-                    {
-                        DebugGizmos.Sphere(finder.ExtractPosition.Value, 1f, Color.green, true, CheckExtractDelay);
-                    }
+                    DrawGizmoSpheres(finder);
 
                     continue;
                 }
 
                 yield return finder.SearchForExfilPosition();
 
+                DrawGizmoSpheres(finder);
+
                 if (finder.ValidPathFound)
                 {
                     validExfils.Add(ex, finder.ExtractPosition.Value);
                     continue;
-                }
-
-                if (DebugGizmos.DrawGizmos && finder.ExtractPosition.HasValue)
-                {
-                    DebugGizmos.Sphere(finder.ExtractPosition.Value, 1f, Color.red, true, CheckExtractDelay);
                 }
             }
         }

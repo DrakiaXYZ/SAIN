@@ -18,6 +18,16 @@ namespace SAIN.Helpers
             return path.status == NavMeshPathStatus.PathComplete;
         }
 
+        public static Vector3? GetNearbyNavMeshPoint(Vector3 testPoint, float radius)
+        {
+            if (NavMesh.SamplePosition(testPoint, out var hit, radius, -1))
+            {
+                return hit.position;
+            }
+
+            return null;
+        }
+
         public static IEnumerable<Vector3> GetNavMeshTestPoints(this BoxCollider collider, float radius, float densityFactor)
         {
             // The Bounds for exfiltration colliders are junk in EFT, so we need to regenerate them here

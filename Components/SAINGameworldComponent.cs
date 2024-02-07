@@ -48,7 +48,9 @@ namespace SAIN.Components
             }
 
             SpawnPointMarkers = UnityEngine.Object.FindObjectsOfType<SpawnPointMarker>();
-            Logger.LogInfo($"Found {SpawnPointMarkers.Length} spawn point markers");
+
+            if (SAINPlugin.DebugMode)
+                Logger.LogInfo($"Found {SpawnPointMarkers.Length} spawn point markers");
         }
 
         public GameWorld GameWorld => Singleton<GameWorld>.Instance;
