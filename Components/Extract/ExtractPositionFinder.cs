@@ -29,7 +29,10 @@ namespace SAIN.Components.Extract
         private static FieldInfo colliderField = AccessTools.Field(typeof(ExfiltrationPoint), "_collider");
         private static float defaultExtractNavMeshSearchRadius = 3f;
         private static float maxExtractNavMeshSearchRadius = 3f;
-        private static float finalExtractNavMeshSearchRadiusAddition = 0.5f;
+
+        // If this is smaller than ~0.75m, no NavMesh points can be found for the Labs Vent extract. However, the larger it gets,
+        // the more likely it is that a NavMesh point will be selected that's outside of the extract collider. 
+        private static float finalExtractNavMeshSearchRadiusAddition = 0.75f;
 
         private ExfiltrationPoint ex = null;
 
@@ -167,7 +170,11 @@ namespace SAIN.Components.Extract
             if (!navMeshPoints.Any())
             {
                 //if (SAINPlugin.DebugMode)
+                {
                     Logger.LogWarning($"Could not find any NavMesh points for {ex.Settings.Name} from {colliderTestPoints.Count()} test points using radius {NavMeshSearchRadius}m");
+                    Logger.LogWarning($"Extract collider: center={collider.transform.position}, size={collider.size}.");
+                    Logger.LogWarning($"Test points: {string.Join(",", colliderTestPoints)}");
+                }
 
                 return false;
             }
@@ -226,7 +233,8 @@ namespace SAIN.Components.Extract
                 }
             }
 
-            IEnumerable<Vector3> sortedNavMeshPoints = navMeshPoints.OrderBy(x => Vector3.Distance(x, testPoint));
+            float heightDeprioritizationFactor = 5;
+            IEnumerable<Vector3> sortedNavMeshPoints = navMeshPoints.OrderBy(x => Vector3.Distance(x, testPoint) + (Math.Abs(x.y - testPoint.y) * heightDeprioritizationFactor));
             if (!sortedNavMeshPoints.Any())
             {
                 return null;

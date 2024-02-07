@@ -59,7 +59,7 @@ namespace SAIN.Components.Extract
 
         public void OnGUI()
         {
-            if (!DebugGizmos.DrawGizmos)
+            if (!SAINPlugin.DebugMode || !DebugGizmos.DrawGizmos)
             {
                 return;
             }
