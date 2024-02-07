@@ -25,7 +25,7 @@ namespace SAIN.Layers
                 return false;
             }
 
-            if (!BotController.BotExtractManager.IsBotAllowedToExfil(SAIN))
+            if (!Components.BotController.BotExtractManager.IsBotAllowedToExfil(SAIN))
             {
                 return false;
             }

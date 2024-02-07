@@ -145,34 +145,33 @@ namespace SAIN.Components.BotController
             }
 
             int validExfils = GameWorldHandler.SAINGameWorld.ExtractFinder.CountValidExfilsForBot(bot);
-            if (validExfils > 0)
-            {
-                bool exfilAssigned = bot.Squad.BotInGroup ? TryAssignSquadExfil(bot) : TryAssignExfilForBot(bot);
-            }
-            else
+            if (validExfils == 0)
             {
                 if (SAINPlugin.DebugMode)
                 {
                     Logger.LogInfo($"Could not select exfil for {bot.name}; no valid ones found");
                 }
+
+                ResetExfilSearchTime(bot);
+                return false;
             }
 
-            if (bot.Memory.ExfilPosition == null)
+            bool exfilAssigned = bot.Squad.BotInGroup ? TryAssignSquadExfil(bot) : TryAssignExfilForBot(bot);
+            if (!exfilAssigned)
             {
                 if (SAINPlugin.DebugMode)
                 {
-                    Logger.LogInfo($"{bot.BotOwner.name} Could Not find Exfil. Type: {bot.Info.WildSpawnType}");
+                    Logger.LogInfo($"{bot.name} could not find exfil. Bot spawn type: {bot.Info.WildSpawnType}");
                 }
 
                 ResetExfilSearchTime(bot);
-
                 return false;
             }
 
             return true;
         }
 
-        public bool IsBotAllowedToExfil(SAINComponentClass bot)
+        public static bool IsBotAllowedToExfil(SAINComponentClass bot)
         {
             if (!bot.Info.Profile.IsPMC && !bot.Info.Profile.IsScav)
             {
