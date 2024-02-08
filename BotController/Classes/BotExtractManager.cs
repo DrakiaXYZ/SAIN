@@ -168,6 +168,8 @@ namespace SAIN.Components.BotController
                 return false;
             }
 
+            Logger.LogInfo($"{bot.name} has selected {bot.Memory.ExfilPoint.Settings.Name} for extraction");
+
             return true;
         }
 
@@ -181,7 +183,7 @@ namespace SAIN.Components.BotController
             return true;
         }
 
-        public bool TryAssignExfilForBot(SAINComponentClass bot)
+        private bool TryAssignExfilForBot(SAINComponentClass bot)
         {
             IDictionary<ExfiltrationPoint, Vector3> validExfils = GameWorldHandler.SAINGameWorld.ExtractFinder.GetValidExfilsForBot(bot);
             bot.Memory.ExfilPoint = selectExfilForBot(bot, validExfils);
@@ -197,7 +199,7 @@ namespace SAIN.Components.BotController
             // it got stuck. 
             NavMeshPath path = new NavMeshPath();
             IDictionary<ExfiltrationPoint, Vector3> possibleExfils = validExfils
-                    .Where(x => CanUseExtract(x.Key))
+                    .Where(x => CanBotsUseExtract(x.Key))
                     .Where(x => Vector3.Distance(bot.Position, x.Value) > MinDistanceToExtract)
                     .Where(x => NavMesh.CalculatePath(bot.Position, x.Value, -1, path) && (path.status == NavMeshPathStatus.PathComplete))
                     .ToDictionary(x => x.Key, x => x.Value);
@@ -223,7 +225,7 @@ namespace SAIN.Components.BotController
             return selectedExfil.Key;
         }
 
-        public bool CanUseExtract(ExfiltrationPoint exfil)
+        public bool CanBotsUseExtract(ExfiltrationPoint exfil)
         {
             // Only use the extract if it's available in the raid
             // NOTE: Extracts unavailable for you are disabled (exfil.isActiveAndEnabled = false), but we can't use that property because all PMC extracts may be disabled if
@@ -270,7 +272,7 @@ namespace SAIN.Components.BotController
             return true;
         }
 
-        public bool TryAssignSquadExfil(SAINComponentClass bot)
+        private bool TryAssignSquadExfil(SAINComponentClass bot)
         {
             var squad = bot.Squad;
             if (squad.IAmLeader)
@@ -321,7 +323,7 @@ namespace SAIN.Components.BotController
         public float TimeRemaining { get; private set; } = 999f;
         public float PercentageRemaining { get; private set; } = 100f;
 
-        public void CheckTimeRemaining()
+        private void CheckTimeRemaining()
         {
             TotalRaidTime = Aki.SinglePlayer.Utils.InRaid.RaidChangesUtil.OriginalEscapeTimeSeconds;
 

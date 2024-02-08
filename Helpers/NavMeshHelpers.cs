@@ -13,9 +13,7 @@ namespace SAIN.Helpers
         public static bool DoesCompletePathExist(Vector3 sourcePosition, Vector3 targetPosition)
         {
             NavMeshPath path = new NavMeshPath();
-            NavMesh.CalculatePath(sourcePosition, targetPosition, -1, path);
-
-            return path.status == NavMeshPathStatus.PathComplete;
+            return NavMesh.CalculatePath(sourcePosition, targetPosition, -1, path) && (path.status == NavMeshPathStatus.PathComplete);
         }
 
         public static Vector3? GetNearbyNavMeshPoint(Vector3 testPoint, float radius)
@@ -42,23 +40,24 @@ namespace SAIN.Helpers
             float minExtent = Math.Min(Math.Min(bounds.size.x, bounds.size.x), bounds.size.x) / 2;
             if (minExtent < radius)
             {
-                if (SAINPlugin.DebugMode)
-                    Logger.LogWarning($"Radius {radius} is smaller than min bounds extent {minExtent}");
-                
+                Logger.LogError($"Radius {radius} is smaller than min bounds extent {minExtent} of size {bounds.size}");
+
                 return Enumerable.Empty<Vector3>();
             }
 
-            Vector3 origin = new Vector3(bounds.min.x + radius, bounds.min.y + radius, bounds.min.z + radius);
-
+            // Determine the number of points to place on each axis
             int widthCount = (int)Math.Max(1, Math.Ceiling((bounds.size.x - (radius * 2)) * densityFactor / (2 * radius)));
             int lengthCount = (int)Math.Max(1, Math.Ceiling((bounds.size.z - (radius * 2)) * densityFactor / (2 * radius)));
             int heightCount = (int)Math.Max(1, Math.Ceiling((bounds.size.y - (radius * 2)) * densityFactor / (2 * radius)));
 
+            // Determine the spacing of the points on each axis
             float widthSpacing = Math.Max(0, (bounds.size.x - (radius * 2)) / widthCount);
             float lengthSpacing = Math.Max(0, (bounds.size.z - (radius * 2)) / lengthCount);
             float heightSpacing = Math.Max(0, (bounds.size.y - (radius * 2)) / heightCount);
 
+            // Create a 3D mesh of points within the bounds
             List<Vector3> testPoints = new List<Vector3>();
+            Vector3 origin = new Vector3(bounds.min.x + radius, bounds.min.y + radius, bounds.min.z + radius);
             for (int x = 0; x <= widthCount; x++)
             {
                 for (int y = 0; y <= heightCount; y++)

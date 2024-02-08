@@ -53,6 +53,22 @@ namespace SAIN.Components
                 Logger.LogInfo($"Found {SpawnPointMarkers.Length} spawn point markers");
         }
 
+        public IEnumerable<Vector3> GetAllSpawnPointPositionsOnNavMesh()
+        {
+            List<Vector3> spawnPointPositions = new List<Vector3>();
+            foreach (SpawnPointMarker spawnPointMarker in SpawnPointMarkers)
+            {
+                // Try to find a point on the NavMesh nearby the spawn point
+                Vector3? spawnPointPosition = NavMeshHelpers.GetNearbyNavMeshPoint(spawnPointMarker.Position, 2);
+                if (spawnPointPosition.HasValue && !spawnPointPositions.Contains(spawnPointPosition.Value))
+                {
+                    spawnPointPositions.Add(spawnPointPosition.Value);
+                }
+            }
+
+            return spawnPointPositions;
+        }
+
         public GameWorld GameWorld => Singleton<GameWorld>.Instance;
         public SAINMainPlayerComponent SAINMainPlayer { get; private set; } = null;
         public SAINBotControllerComponent SAINBotController { get; private set; } = null;

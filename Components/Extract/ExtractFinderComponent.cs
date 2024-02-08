@@ -163,12 +163,25 @@ namespace SAIN.Components.Extract
 
         private IEnumerator FindAllExfils()
         {
-            IsFindingExtracts = true;
+            bool completedCoroutine = false;
+            try
+            {
+                IsFindingExtracts = true;
 
-            yield return UpdateValidExfils(ValidExfils, AllExfils);
-            yield return UpdateValidExfils(ValidScavExfils, AllScavExfils);
+                yield return UpdateValidExfils(ValidExfils, AllExfils);
+                yield return UpdateValidExfils(ValidScavExfils, AllScavExfils);
 
-            IsFindingExtracts = false;
+                completedCoroutine = true;
+            }
+            finally
+            {
+                IsFindingExtracts = false;
+
+                if (!completedCoroutine)
+                {
+                    Logger.LogError("An error occurred when searching for extracts.");
+                }
+            }
         }
 
         private IEnumerator UpdateValidExfils(IDictionary<ExfiltrationPoint, Vector3> validExfils, ExfiltrationPoint[] allExfils)
